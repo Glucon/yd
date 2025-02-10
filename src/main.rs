@@ -30,7 +30,8 @@ fn get_translation(word: &str) -> String {
     };
 
     let document = Html::parse_document(&html);
-    let mut results = Vec::new();
+    let mut translations = Vec::new();
+    let mut phonetics = Vec::new();
 
     if is_chinese(word) {
         let word_exp_selector = Selector::parse("li.word-exp-ce.mcols-layout").unwrap();
@@ -38,16 +39,31 @@ fn get_translation(word: &str) -> String {
 
         for exp in document.select(&word_exp_selector) {
             if let Some(word_text) = exp.select(&point_selector).next() {
-                results.push(word_text.text().collect::<String>());
+                translations.push(word_text.text().collect::<String>());
             }
         }
     } else {
         let trans_container_selector = Selector::parse("div.trans-container").unwrap();
+        let phone_selector = Selector::parse("div.per-phone").unwrap();
+        let span_selector = Selector::parse("span").unwrap();
+        let phonetic_selector = Selector::parse("span.phonetic").unwrap();
         let word_exp_selector = Selector::parse("li.word-exp").unwrap();
         let pos_selector = Selector::parse("span.pos").unwrap();
         let trans_selector = Selector::parse("span.trans").unwrap();
 
-        for container in document.select(&trans_container_selector) {
+        if let Some(container) = document.select(&trans_container_selector).nth(0) {
+            for phone_div in container.select(&phone_selector) {
+                if let Some(label) = phone_div.select(&span_selector).next() {
+                    let label_text = label.text().collect::<String>().trim().to_string();
+                    if let Some(phonetic) = phone_div.select(&phonetic_selector).next() {
+                        let phonetic_text = phonetic.text().collect::<String>().trim().to_string();
+                        phonetics.push(format!("{} {}", label_text, phonetic_text));
+                    }
+                }
+            }
+        }
+
+        if let Some(container) = document.select(&trans_container_selector).nth(1) {
             for exp in container.select(&word_exp_selector) {
                 if let (Some(pos), Some(trans)) = (
                     exp.select(&pos_selector).next(),
@@ -55,17 +71,26 @@ fn get_translation(word: &str) -> String {
                 ) {
                     let pos_text = pos.text().collect::<String>().trim().to_string();
                     let trans_text = trans.text().collect::<String>().trim().to_string();
-                    results.push(format!("{}: {}", pos_text, trans_text));
+                    translations.push(format!("{}: {}", pos_text, trans_text));
                 }
             }
         }
     }
 
-    if results.is_empty() {
+    let output = if phonetics.is_empty() && translations.is_empty() {
         "No results.".to_string()
     } else {
-        results.join("\n")
-    }
+        let phonetics_str = phonetics.join(" ");
+        let translations_str = translations.join("\n");
+        if phonetics_str.is_empty() {
+            translations_str
+        } else if translations_str.is_empty() {
+            phonetics_str
+        } else {
+            format!("{}\n{}", phonetics_str, translations_str)
+        }
+    };
+    output
 }
 
 fn main() {
